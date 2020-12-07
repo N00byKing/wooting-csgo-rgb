@@ -1,0 +1,9 @@
+{
+    "tasks": [
+        {
+            "label": "build debug meson",
+            "type": "shell",
+            "command": "meson build --buildtype=debug && cd build && ninja"
+        }
+    ]
+}

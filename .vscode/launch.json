@@ -1,0 +1,12 @@
+{
+    "configurations": [
+        {
+            "name": "Debug with Meson",
+            "type": "cppdbg",
+            "request": "launch",
+            "program": "${workspaceRoot}/build/wooting-csgo-rgb",
+            "cwd": "${workspaceRoot}",
+            "preLaunchTask": "build debug meson"
+        }
+    ]
+}
