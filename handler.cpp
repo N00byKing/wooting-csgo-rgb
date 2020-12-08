@@ -10,27 +10,21 @@
 
 #include "handler.hpp"
 
-int bombIndex = 0;
+int KeyboardHandler::bombCounter = 0;
 
-void wooting_handle_event(std::string strroot) {
+void KeyboardHandler::wooting_handle_event(std::string strroot) {
     wooting_rgb_kbd_connected();
 
     Json::Value root;
     Json::Reader reader;
-
-    //Initial Reset
-    for (int i = 0; i <= 16; i++) {
-        for (int j = 0; j <= 5; j++) {
-            wooting_rgb_array_set_single(j, i, 0, 0, 0);
-        }   
-    }
+    reader.parse(strroot, root);
 
     //Team Parse
     std::string team = root["player"].get("team", "").asString();
     if (team == "CT") {
         for (int i = 14; i <= 16; i++) {
             for (int j = 0; j <= 5; j++) {
-                wooting_rgb_array_set_single(j, i, 29, 138, 184);
+                wooting_rgb_array_set_single(j, i, 181, 102, 0);
             }
         }
     } else if (team == "T") {
@@ -41,11 +35,15 @@ void wooting_handle_event(std::string strroot) {
         }
     }
 
+    //Prepare for Health Parse
+    for (int i = 1; i < 12; i++) {
+        wooting_rgb_array_set_single(1, i, 0, 0, 0);
+    }
     //Health Parse
     int hp = std::stoi(root["player"]["state"].get("health", "100").asString());
-    int x = hp / 10;
-    for (int i = 0; i < x; i++) {
-        wooting_rgb_array_set_single(1, i + 1, 255, 0, 0);
+    int hp_ratio = (int)((hp/100.0f)*13);
+    for (int i = 1; i < hp_ratio; i++) {
+        wooting_rgb_array_set_single(1, i, 255, 0, 0);
     }
 
     //Kill Parse
@@ -71,14 +69,34 @@ void wooting_handle_event(std::string strroot) {
     std::string bombState = root["round"].get("bomb", "").asString();
     wooting_set_arrowkeys(255, 255, 255);
     if (bombState == "planted") {
-        wooting_set_arrowkeys(bombIndex, 0, 0);
-        bombIndex = (bombIndex == 255) ? 0 : 255;  
+        switch (bombCounter) {
+            case 0:
+                bombCounter++;
+                wooting_rgb_array_set_single(4, 15, 255, 0, 0);
+                break;
+            case 1:
+                bombCounter++;
+                wooting_rgb_array_set_single(5, 14, 255, 0, 0);
+                break;
+            case 2:
+                bombCounter++;
+                wooting_rgb_array_set_single(5, 15, 255, 0, 0);
+                break;
+            case 3:
+                bombCounter = 0;
+                wooting_rgb_array_set_single(5, 16, 255, 0, 0);
+                break;
+        }
     } else if (bombState == "defused") {
         wooting_set_arrowkeys(0, 0, 255);
     } else if (bombState == "exploded") {
         wooting_set_arrowkeys(255, 0, 0);
     }
 
+    //Prepare for Ammo Parse
+    for (int i = 2; i <= 13; i++) {
+        wooting_rgb_array_set_single(0, i, 0, 0, 0);
+    }
     //Ammo Parse
     for (int i = 0; i < 9; i++) {
         if (root["player"]["weapons"]["weapon_" + std::to_string(i)].get("state", "0").asString() == "active") {
@@ -86,25 +104,21 @@ void wooting_handle_event(std::string strroot) {
             int ammo_clip_max = std::stoi(root["player"]["weapons"]["weapon_" + std::to_string(i)].get("ammo_clip_max", "1").asString());
             int ammo_ratio = (int)(((double)ammo_clip)/((double)ammo_clip_max) * 12);
             for (int j = 0; j < ammo_ratio; j++) {
-                if (ammo_ratio < 5) {
-                    wooting_rgb_array_set_single(0, j + 2, 255, 0, 0);
-                } else {
-                    wooting_rgb_array_set_single(0, j + 2, 0, 255, 0);
-                }
+                wooting_rgb_array_set_single(0, j + 2, (int)(255 - (ammo_ratio/12.0f)*255.f), (int)(255 + (ammo_ratio/12.0f)*255.f), 0);
             }
-            break;
         }
     }
 
+    //Finalize changes
     wooting_rgb_array_update_keyboard();
 }
 
-void wooting_exit() {
+void KeyboardHandler::wooting_exit() {
         wooting_rgb_reset_rgb();
         wooting_rgb_close();
 }
 
-void wooting_set_arrowkeys(int red, int green, int blue) {
+void KeyboardHandler::wooting_set_arrowkeys(int red, int green, int blue) {
     wooting_rgb_array_set_single(4, 15, red, green, blue);
     wooting_rgb_array_set_single(5, 14, red, green, blue);
     wooting_rgb_array_set_single(5, 15, red, green, blue);

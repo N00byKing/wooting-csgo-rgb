@@ -1,5 +1,8 @@
-#include <httplib.h>
+#ifndef CPPHTTPLIB_THREAD_POOL_COUNT
+#define CPPHTTPLIB_THREAD_POOL_COUNT 1
+#endif //CPPHTTPLIB_THREAD_POOL_COUNT
 
+#include <httplib.h>
 #include "handler.hpp"
 
 int main() {
@@ -8,11 +11,11 @@ int main() {
 
     svr.Post(".*",
              [](const httplib::Request &req, httplib::Response &res) {
-                 wooting_handle_event(req.body);
+                 KeyboardHandler::wooting_handle_event(req.body);
              });
 
     svr.Get("/stop", [&](const httplib::Request &req, httplib::Response &res) {
-        wooting_handle_event("exit");
+        KeyboardHandler::wooting_exit();
         svr.stop();
     });
 
