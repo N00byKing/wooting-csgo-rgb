@@ -7,6 +7,9 @@ class KeyboardHandler {
 
     private:
         static int bombCounter;
+        static int fireCounter;
+        static int scanCounter;
 
         static void wooting_set_arrowkeys(int, int, int);
+        static void wooting_iterative_set(int, int, int, int, int, int, int);
 };
