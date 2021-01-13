@@ -6,26 +6,67 @@
 #include <string>
 
 #include "wooting-rgb-sdk.h"
-#include <json/json.h>
+
+#include <rapidjson/document.h>
+#include <rapidjson/pointer.h>
 
 #include "handler.hpp"
 
 #define COLOR_T  222, 127, 62
-#define COLOR_CT 181, 102, 0
+#define COLOR_CT 0, 0, 255
 
+#define COLOR_WHITE 255, 255, 255
+#define COLOR_BLACK 0, 0, 0
+ 
 int KeyboardHandler::bombCounter = 0;
 int KeyboardHandler::fireCounter = 0;
+int KeyboardHandler::backCounter = 1;
 int KeyboardHandler::scanCounter = 1;
 
 void KeyboardHandler::wooting_handle_event(std::string strroot) {
     wooting_rgb_kbd_connected();
 
-    Json::Value root;
-    Json::Reader reader;
-    reader.parse(strroot, root);
+    rapidjson::Document root;
+    root.Parse(strroot.c_str());
+
+    //Clean with Round over Animation if needed
+    if (scanCounter > 2 || strcmp(rapidjson::Pointer("/round/phase").GetWithDefault(root, "").GetString(),"over") == 0) {
+        int scanCounter_ratio = (int)(((scanCounter >= 16 ? 16 : scanCounter )/16.0f)*255);
+
+        wooting_iterative_set(0, 5, 0, scanCounter-5, 0, 0, 0); //Clear Area before Trail
+
+        //Trail
+        wooting_iterative_set(0, 5, scanCounter-2, scanCounter-1, (255 - scanCounter_ratio)*0.5f, 0, scanCounter_ratio*0.5f);
+        wooting_iterative_set(0, 5, scanCounter-4, scanCounter-3, (255 - scanCounter_ratio)*0.1f, 0, scanCounter_ratio*0.1f);
+
+        //Sweep Head
+        wooting_iterative_set(0, 5, scanCounter, scanCounter, 255 - scanCounter_ratio, 0, scanCounter_ratio);
+
+        scanCounter = scanCounter >= 21 ? 1 : scanCounter+1;
+
+        //Finalize changes
+        wooting_rgb_array_update_keyboard();
+        return;
+    }
+
+    //"Background"
+    if (backCounter <= 15) {
+        wooting_iterative_set(2, 5, 1, 13, 255 - (backCounter*17), (backCounter*17), 0);
+        backCounter++;
+    } else if (backCounter > 15 && backCounter <= 30) {
+        wooting_iterative_set(2, 5, 1, 13, 0, 255 - ((backCounter % 16)*17), ((backCounter % 16)*17));
+        backCounter++;
+    } else if (backCounter > 30 && backCounter <= 45) {
+        wooting_iterative_set(2, 5, 1, 13, ((backCounter % 31)*17), 0, 255 - ((backCounter % 31)*17));
+        backCounter++;
+    } else {
+        backCounter = 0;
+    }
+    
+
 
     //Team Parse
-    std::string team = root["player"].get("team", "").asString();
+    std::string team = rapidjson::Pointer("/player/team").GetWithDefault(root, "").GetString();
     if (team == "CT") {
         wooting_iterative_set(0, 0, 14, 16, COLOR_CT);
     } else if (team == "T") {
@@ -33,9 +74,10 @@ void KeyboardHandler::wooting_handle_event(std::string strroot) {
     }
 
     //Prepare for Status Parse
-    wooting_iterative_set(1, 2, 14, 16, 0, 0, 0);
+    wooting_iterative_set(1, 2, 14, 16, COLOR_BLACK);
+    wooting_iterative_set(1, 1, 1, 12, COLOR_BLACK);
     //Status Parse (Fire)
-    int burning_value = std::stoi(root["player"]["state"].get("burning", "0").asString());
+    int burning_value = rapidjson::Pointer("/player/state/burning").GetWithDefault(root, 0).GetInt();
     if (burning_value > 0) {
         fireCounter = fireCounter > 5 ? 0 : fireCounter;
         wooting_iterative_set(1, 2, 14, 16, burning_value == 255 ? 170 : burning_value, 0, 0);
@@ -43,25 +85,24 @@ void KeyboardHandler::wooting_handle_event(std::string strroot) {
         fireCounter++;
     }
     //Status Parse (Flash)
-    int flash_value = std::stoi(root["player"]["state"].get("flashed", "0").asString());
+    int flash_value = rapidjson::Pointer("/player/state/flashed").GetWithDefault(root, 0).GetInt();
     if (flash_value > 0) {
         wooting_iterative_set(1, 2, 14, 16, flash_value, flash_value, flash_value);
     }
-
-    //Prepare for Health and Armor Parse
-    wooting_iterative_set(1, 1, 1, 12, 0, 0, 0);
-    //Health Parse
-    int hp = std::stoi(root["player"]["state"].get("health", "100").asString());
+    //Status Parse (Health)
+    int hp = rapidjson::Pointer("/player/state/health").GetWithDefault(root, 100).GetInt();
     int hp_ratio = (int)((hp/100.0f)*13);
     wooting_iterative_set(1, 1, 1, hp_ratio, 255, 0, 0);
-    //Ammo Parse
-    int armor = std::stoi(root["player"]["state"].get("armor", "100").asString());
+    //Status Parse (Armor)
+    int armor = rapidjson::Pointer("/player/state/armor").GetWithDefault(root, 0).GetInt();
     int armor_ratio = (int)((armor/100.0f)*255.f);
     wooting_rgb_array_set_single(1, 13, 255 - armor_ratio, armor_ratio, 0);
 
+    //Prepare for Kill Parse
+    wooting_iterative_set(0, 5, 0, 0, COLOR_BLACK);
     //Kill Parse
-    int kills = std::stoi(root["player"]["state"].get("round_kills", "0").asString());
-    int killsHS = std::stoi(root["player"]["state"].get("round_killhs", "0").asString());
+    int kills = rapidjson::Pointer("/player/state/round_kills").GetWithDefault(root, 0).GetInt();
+    int killsHS = rapidjson::Pointer("/player/state/round_killhs").GetWithDefault(root, 0).GetInt();
     if (kills > 5) {
         kills = 5;
     }
@@ -79,8 +120,8 @@ void KeyboardHandler::wooting_handle_event(std::string strroot) {
     }
 
     //Bomb Parse
-    std::string bombState = root["round"].get("bomb", "").asString();
-    wooting_set_arrowkeys(255, 255, 255);
+    std::string bombState = rapidjson::Pointer("/round/bomb").GetWithDefault(root, "").GetString();
+    wooting_set_arrowkeys(COLOR_WHITE);
     if (bombState == "planted") {
         switch (bombCounter) {
             case 0:
@@ -107,23 +148,15 @@ void KeyboardHandler::wooting_handle_event(std::string strroot) {
     }
 
     //Prepare for Ammo Parse
-    wooting_iterative_set(0, 0, 2, 13, 0, 0, 0);
+    wooting_iterative_set(0, 0, 2, 13, COLOR_BLACK);
     //Ammo Parse
     for (int i = 0; i < 9; i++) {
-        if (root["player"]["weapons"]["weapon_" + std::to_string(i)].get("state", "0").asString() == "active") {
-            int ammo_clip = std::stoi(root["player"]["weapons"]["weapon_" + std::to_string(i)].get("ammo_clip", "0").asString());
-            int ammo_clip_max = std::stoi(root["player"]["weapons"]["weapon_" + std::to_string(i)].get("ammo_clip_max", "1").asString());
+        if (strcmp(rapidjson::Pointer(("/player/weapons/weapon_" + std::to_string(i) + "/state").c_str()).GetWithDefault(root, "").GetString(), "active") == 0) {
+            int ammo_clip = rapidjson::Pointer(("/player/weapons/weapon_" + std::to_string(i) + "/ammo_clip").c_str()).GetWithDefault(root, 0).GetInt();
+            int ammo_clip_max = rapidjson::Pointer(("/player/weapons/weapon_" + std::to_string(i) + "/ammo_clip_max").c_str()).GetWithDefault(root, 0).GetInt();
             int ammo_ratio = (int)(((double)ammo_clip)/((double)ammo_clip_max)*13);
             wooting_iterative_set(0, 0, 2, ammo_ratio, (int)(255 - (ammo_ratio/13.0f)*255.f), (int)(255 + (ammo_ratio/13.0f)*255.f), 0);
         }
-    }
-
-    //Clean with Round over Animation if needed
-    if (root["round"].get("phase", "").asString() == "over" || scanCounter > 2) {
-        int scanCounter_ratio = (int)((scanCounter/15.0f)*255);
-        wooting_iterative_set(0, 5, 0, scanCounter-1, 0, 0, 0);
-        wooting_iterative_set(0, 5, scanCounter, scanCounter, 255 - scanCounter_ratio, 0, scanCounter_ratio);
-        scanCounter = scanCounter+1 > 16 ? 1 : scanCounter+1;
     }
 
     //Finalize changes
